@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Grid Sample</title>
+    <style>
+      #map {
+		  height: 100%;
+		}
+
+		
+		html,
+		body {
+		  height: 100%;
+		  margin: 0;
+		  padding: 0;
+		}
+
+    .hide{
+      display:none;
+    }
+
+		.custom-map-control-button {
+		  position: absolute;
+      left: 10px;
+      bottom: 75px;
+      width: 150px;
+      height: 50px;
+      z-index: 10000;
+      background: white;
+      border-radius: 5px;
+      text-align: center;
+      outline:none;
+		}
+		.custom-map-control-button:hover {
+		  background: rgb(235, 235, 235);
+		}
+    .slideContainer {
+      position: absolute;
+      left: 10px;
+      bottom: 20px;
+      width: 150px;
+      height: 50px;
+      z-index: 10000;
+      background: white;
+      border-radius: 5px;
+      text-align: center;
+    }
+    </style>
+  </head>
+
+  <body>
+    <div class="slideContainer">
+      <input style="margin-top: 10px;" type="range" min="6" max="8" value="7" class="slider" id="myRange">
+      <span id="activeRes">Grid Resolution: 7</span>
+    </div>
+    <div id="map"></div>
+    <script>
+
+	var map;
+	var activeHexKeys = {};
+	let activeGridRes = 7;
+
+function initMap() {
+  map = new google.maps.Map(document.getElementById("map"), {
+    zoom: 12,
+    center: { lat: 33.444589518393705, lng: -112.07478226470481 }, //33.37728221808104, -111.80894494682515
+    mapTypeId: "hybrid",
+  });
+  
+	google.maps.event.addListener(map, "dragend", updateGridsOnBounds);
+	google.maps.event.addListener(map, "zoom_changed", updateGridsOnBounds);
+  
+  const output = document.getElementById("activeRes");
+	const slider = document.getElementById("myRange");
+  slider.setAttribute('disabled', 'true');
+  slider.oninput = function() {
+    console.log('updating slider to: ' + this.value);
+    activeGridRes = parseInt(this.value);
+    output.innerHTML = "Grid Resolution: " + this.value;
+    removeAllHex();
+    updateGridsOnBounds();
+  };
+  
+  const toggleButton = document.createElement("button");
+  toggleButton.textContent = "Load Data";
+  toggleButton.classList.add("custom-map-control-button");      
+  document.body.appendChild(toggleButton);
+  //map.controls[google.maps.ControlPosition.TOP_RIGHT].push(toggleButton);
+  toggleButton.addEventListener("click", () => {
+    toggleButton.classList.add("hide");
+
+    slider.removeAttribute('disabled');
+
+    updateGridsOnBounds();
+  });
+}
+
+function updateGridsOnBounds() {
+	if(h3 && map){
+		const bounds = map.getBounds();
+		const sw = bounds.getSouthWest();
+		const ne = bounds.getNorthEast();
+		
+		const polygon = [
+			[ne.lat(), sw.lng()],
+			[ne.lat(), ne.lng()],
+			[sw.lat(), ne.lng()],
+			[sw.lat(), sw.lng()],
+			[ne.lat(), sw.lng()],
+		];
+		const polysInBounds = h3.polygonToCells(polygon, activeGridRes);
+		const keysToRemove = Object.keys(activeHexKeys).filter(k => -1 === polysInBounds.indexOf(k));
+    
+		keysToRemove.forEach(k => {
+			activeHexKeys[k].setMap(null);
+			delete activeHexKeys[k];
+		});
+    const remainingHex = Object.keys(activeHexKeys);
+
+    const polysToAdd = polysInBounds.filter(l => -1 === remainingHex.indexOf(l));
+				
+		polysToAdd.forEach(h => {
+      const gValues = getHexValue(h);
+
+      if(gValues){
+
+        const hexBoundary = h3.cellToBoundary(h);
+        const hexPoly = [
+          { lat: hexBoundary[0][0], lng: hexBoundary[0][1] },
+          { lat: hexBoundary[1][0], lng: hexBoundary[1][1] },
+          { lat: hexBoundary[2][0], lng: hexBoundary[2][1] },
+          { lat: hexBoundary[3][0], lng: hexBoundary[3][1] },
+          { lat: hexBoundary[4][0], lng: hexBoundary[4][1] },
+          { lat: hexBoundary[5][0], lng: hexBoundary[5][1] },
+          { lat: hexBoundary[0][0], lng: hexBoundary[0][1] },
+        ];
+        //console.log('pop for grid: ' + h + " is: " + GRID_6.find(g => g.grid === h).pop);
+        const hex = new google.maps.Polygon({
+          paths: hexPoly,
+          
+          strokeOpacity: 0,
+          strokeWeight: 1,
+          fillOpacity: 0.6,
+          fillColor: getColorForRangeValue(gValues.pop),
+          });
+
+          hex.setMap(map);
+          activeHexKeys[h] = hex;
+      }
+		});
+		
+	}
+}
+
+function getHexValue(h){
+  switch(activeGridRes){
+    case 6:
+      return GRID_6.find(g => g.grid === h);
+      break;
+    case 7:
+      return GRID_7.find(g => g.grid === h);
+      break;
+    case 8: 
+      return GRID_8.find(g => g.grid === h);
+      break;
+    default:
+      return null;
+      break;
+  }
+
+}
+
+function removeAllHex() {
+  const keysToRemove = Object.keys(activeHexKeys);
+    
+  keysToRemove.forEach(k => {
+    activeHexKeys[k].setMap(null);
+    delete activeHexKeys[k];
+  });
+}
+
+function getColorForRangeValue(v){
+  if(v >= 7500){
+    return "#03d251";
+  }
+  else if(v > 5000 && v < 7500){
+    return "#53fa61";
+  }
+  else if(v > 2500 && v < 5000){
+    return "#b4fcb9"; 
+  }
+  else if(v > 1000 && v <= 2500){
+    return "#f2fc94"; 
+  }
+  else if (v < 1000){
+    return "#ffffd4"; 
+  }
+}
+
+window.initMap = initMap;
+		  
+    </script>
+  
+	<script src="https://unpkg.com/h3-js"></script>
+	<script type="text/javascript" src="grid8.js"></script>
+	<script type="text/javascript" src="grid7.js"></script>
+	<script type="text/javascript" src="grid6.js"></script>
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?v=3.50&key=INSERTKEY&libraries=visualization&callback=initMap">
+    </script>
+  </body>
+</html>
